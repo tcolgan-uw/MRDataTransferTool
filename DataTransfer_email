@@ -1,0 +1,30 @@
+#!/bin/csh
+
+set EMAIL_BODY = ""
+
+foreach name ($argv)
+	#echo ${name}
+
+	switch ($name)
+		case -SUBJECT*:
+		case -subject*:
+			set SUBJECT = `echo ${name} | awk '{print substr($0,9)}'`
+			set SUBJECT = `echo $SUBJECT | sed 's,_, ,g'`
+			set SUBJECT = "${SUBJECT}"
+			breaksw
+
+		case -EMAIL*:
+		case -email*:
+			set RECIPIENT1 = `echo ${name} | awk '{print substr($0,7)}'`
+			#echo "Using email ${RECIPIENT1}"
+			breaksw
+
+		default:
+			echo "Unrecognized Option"
+			breaksw
+	endsw
+end
+
+#echo "${SUBJECT}"
+echo $EMAIL_BODY | mutt  -s "$SUBJECT" $RECIPIENT1 
+

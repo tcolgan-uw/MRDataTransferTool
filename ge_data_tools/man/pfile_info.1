@@ -1,0 +1,35 @@
+.\" Manpage for pfile_info."
+.TH man 1 "07 July 2017" "1.0" "pfile_info man page"
+.SH NAME
+pfile_info : Commandline code to parse and view pfiles.
+
+.SH DESCRIPTION
+pfile_info is a Orchestra based code designed to interogate pfiles. Current options are:
+
+
+.SH OPTIONS
+Must be called "pfile_info Pxx.7 [options]"
+
+.IP pfile_info[Pxx.7] print
+Print some of the pfile information to the terminal.
+
+.IP pfile_info[Pxx.7] xml
+Generate an xml file with some of the pfile information.Name would be Pxx.7.xml
+
+.IP pfile_info[Pxx.7] version
+Just print the version of the pfile.
+
+.IP pfile_info[Pxx.7] dump
+This generates a pfile without the data.It makes a binary copy of the header which is useful is you compress the pfile.
+
+.SH SEE ALSO
+pfile_bundle
+sort_all_pfiles
+index_pfiles
+
+.SH BUGS
+- Error checking is likely incomplete.
+- Should be called in the directory the pfile exists 
+
+.SH AUTHOR
+Initial author - Kevin Johnson(kmjohnson3@wisc.edu)

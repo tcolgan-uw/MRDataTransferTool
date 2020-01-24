@@ -1,0 +1,96 @@
+#!/bin/bash
+	
+function get_version()
+{
+
+local VERSION=`pfile_info $1 version | grep -a RDB_RDBM_REVISION | cut -c 21-26`
+echo $VERSION
+
+}
+
+function command_exists () {
+    type "$1" &> /dev/null ;
+}
+
+FOLDER=`pwd`
+echo "Bundling $FOLDER"
+
+if ! command_exists pfile_info ; then
+	echo "Command pfile_info does not exist" 
+	exit;
+fi
+
+#Find all the Pfiles
+for i in $(find -type f -name "P*.7" ); do
+	
+	echo "Bundling $i"
+	
+	#Don't bother if we don't have permissions for file
+	if ! [[ -w "$i" ]] ; then
+		echo "Don't have permission to write/delete ${i}"
+		continue;
+	fi
+	
+	#Don't bother if we don't have permissions for folder
+	PFOLDER=$(dirname "${i}")
+	if ! [[ -w "$PFOLDER" ]] ; then
+		echo "Don't have permission to write/delete ${PFOLDER}"
+		continue;
+	fi
+	
+	
+	#Don't bother for Pfiles which are small since they are probably incomplete
+	MINSIZE=2048
+	ACTSIZE=$(wc -c <"$i")
+	if [ $ACTSIZE -ge $MINSIZE ]; then
+		echo size is over $MINSIZE bytes
+	else
+		echo "Pfile is only $ACTSIZE bytes. Skipping compression"
+		continue;
+	fi
+	
+	#Make sure this version is supported
+	VER=`get_version $i`
+	if [[ "$VER" == unknown ]]; then
+		echo "Can't compress $i for version $VER"
+		continue;
+	fi
+	
+	# Make sure the pfile info works
+	testVERSION=`pfile_info $1 version | grep -a RDB_RDBM_REVISION | cut -c 21-26`
+	actVERSION=`pfile_info $1 version | grep -a RDB_RDBM_REVISION | cut -c 21-26`
+	
+	versionDIFF=$(diff <(echo $testVERSION) <(echo $actVERSION))
+	if [ "$versionDIFF" ];
+	then
+		echo "Pfile doesn't seem to be working. Is it installed?"
+		continue;
+	fi
+				
+	#Get an md5sum
+	echo "  Getting Checksum"
+	md5sum $i > $i.md5_checksum
+	
+	#Make a copy of the header
+	echo "  Dumping Header"
+	pfile_info $i dump print > $i.header.txt
+	
+	#Zip the file (copy)
+	echo "  Ziping $i"
+	gzip -1 -c $i > $i.gz 
+	
+	# Compare
+	echo "  Comparing"
+	DIFF=$(diff <(gzip -d -c $i.gz) <(cat $i))
+	if [ "$DIFF" ]; 
+	then
+		echo "  Zipped files do not match. Keeping original pfile"
+		rm $i.gz -f
+		continue
+	else
+		rm $i -f
+	fi	
+		
+done
+
+

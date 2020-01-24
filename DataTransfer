@@ -1,0 +1,1049 @@
+#!/bin/csh
+
+set TRANSFER_PFILES = 0
+set TRANSFER_DICOMS = 0
+set TRANSFER_SCANARCHIVE = 0
+set TRANSFER_IDEAL2DGATING = 0
+set TRANSFER_IDEALCHANCOMB = 0
+set TRANSFER_DWIGATING = 0
+set TRANSFER_PCVIPRGATING = 0
+set TRANSFER_CALIB = 0
+set TRANSFER_MRE = 0
+set TRANSFER_KACQ = 0
+
+set TRANSFER_POINT = ""
+
+set EXAM_NUMBER = 0
+
+
+foreach name ($argv)
+	#echo ${name}
+
+	switch ($name)
+	case -PFILES:
+	case -pfiles:
+		echo "Transfer Pfiles"
+		set TRANSFER_PFILES = 1
+		breaksw
+
+	case -DICOMS:
+    case -dicoms:
+		echo "Transfer DICOMS"
+		set TRANSFER_DICOMS = 1
+		breaksw
+
+	case -SCANARCHIVE:
+	case -scanarchive:
+		echo "Transfer Scan Archive"
+		set TRANSFER_SCANARCHIVE = 1
+		breaksw
+
+	case -IDEAL2DGATING:
+	case -ideal2dgating:
+		echo "Transfer IDEAL2D Gating Files"
+		set TRANSFER_IDEAL2DGATING = 1
+		breaksw
+
+	case -DWIGATING:
+	case -dwigating:
+		echo "Transfer DWI Gating Files"
+		set TRANSFER_DWIGATING = 1
+		breaksw
+
+	case -PCVIPRGATING:
+	case -pcviprgating:
+		echo "Transfer PCVIPR Gating Files"
+		set TRANSFER_PCVIPRGATING = 1
+		breaksw
+
+	case -IDEALCHANCOMB:
+	case -idealchancomb:
+		echo "Transfer IDEAL Chan Comb Files"
+		set TRANSFER_IDEALCHANCOMB = 1
+		breaksw
+
+	case -CALIB:
+	case -calib:
+		echo "Transfer Calibration Folder"
+		set TRANSFER_CALIB = 1
+		breaksw
+
+	case -MRE:
+	case -mre:
+		echo "Transfer MRE Raw Data Folder"
+		set TRANSFER_MRE = 1
+		breaksw
+
+	case -PFILEKACQ
+	case -pfilekacq
+		echo "Transfer Pfile Kacq files"
+		set TRANSFER_KACQ = 1
+		breaksw
+
+	case -EXAMNUMBER*:
+	case -examnumber*:
+		set EXAM_NUMBER = `echo ${name} | awk '{print substr($0,12)}'`
+		set EXAM_NUMBER = `echo ${EXAM_NUMBER} | bc`
+		#echo "Using Exam Number ${EXAM_NUMBER}"
+		breaksw
+
+	case -PATH*:
+	case -path*:
+		set SAVE_PATH = `echo ${name} | awk '{print substr($0,6)}'`
+		set colon_index = `expr index "$SAVE_PATH" ":"`
+		@ colon_index = $colon_index + 1
+		set SAVE_FOLDER = `echo ${SAVE_PATH} | awk -v myvar=$colon_index '{print substr($0,myvar)}'`
+		@ colon_index = $colon_index - 2
+		set USER_MACHINE = `echo ${SAVE_PATH} | awk -v myvar=$colon_index '{print substr($0,0,myvar)}'`
+		#echo ${USER_MACHINE}
+		#echo ${SAVE_PATH}
+		#echo ${SAVE_FOLDER}
+		breaksw
+
+	case -EMAIL*:
+	case -email*:
+		set RECEPIENT=${name}
+		breaksw
+
+	default:
+		echo "Unrecognized Option"
+		breaksw
+	endsw
+end
+
+if ($EXAM_NUMBER == 0) then
+	echo "Enter exam number :"
+	set EXAM_NUMBER = $<
+endif
+
+
+# Get the software version that is used for some files (pfiles in HD vs DV etc.)
+set SOFTWARE_VERSION=`whatRev | grep "MR Software release"`
+#echo $SOFTWARE_VERSION
+
+if (`echo $SOFTWARE_VERSION | grep "HD" | wc -l`) then
+    set SOFTWARE_VERSION = "HD"
+else if (`echo $SOFTWARE_VERSION | grep "DV" | wc -l`) then
+    set SOFTWARE_VERSION = "DV"
+else if (`echo $SOFTWARE_VERSION | grep "RX" | wc -l`) then
+    set SOFTWARE_VERSION = "RX"
+else if (`echo $SOFTWARE_VERSION | grep "MP" | wc -l`) then
+    set SOFTWARE_VERSION = "MP"
+else
+    set SUBJECT="-SUBJECTUnknown_Software_Version_for_Exam_$EXAM_NUMBER "
+	ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+endif
+
+#echo $SOFTWARE_VERSION
+
+
+# Ask again to make sure its correct
+echo "Copying data for Exam ${EXAM_NUMBER}" 
+
+# Create Remote folder if it doesn't exist
+ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}"
+
+if ($TRANSFER_SCANARCHIVE == 1) then
+
+	if ("$SOFTWARE_VERSION" == "HD") then
+		echo "No Scan Archive on HD"
+		set SUBJECT="-SUBJECTNo_Scan_Archive_Files_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+	    echo "Transferring Scan Archive Files"
+		# Copy the data from ICE/MGD
+		#echo "Copying Scan Archive to /usr/g/mrraw/"
+		rsh icn1 "cp -r /data/arc/Closed/Exam${EXAM_NUMBER} /usr/g/mrraw/"
+
+		if ( -d /usr/g/mrraw/Exam${EXAM_NUMBER} ) then
+            set status=`ls -A /usr/g/mrraw/Exam${EXAM_NUMBER} | wc | awk '{print $1}'`
+			#if ( `ls -A /usr/g/mrraw/Exam${EXAM_NUMBER}` ) then
+			if ("${status}" <= 0) then
+				set SUBJECT="-SUBJECTNo_Scan_Archive_Files_for_Exam_$EXAM_NUMBER "
+				ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+			else
+				scp -r /usr/g/mrraw/Exam${EXAM_NUMBER} ${SAVE_PATH}
+			endif
+		else
+			set SUBJECT="-SUBJECTNo_Scan_Archive_Files_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		endif
+	endif
+endif
+
+if ($TRANSFER_CALIB == 1) then
+    echo "Transferring Calibration Data"
+
+	if ("$SOFTWARE_VERSION" == "HD") then
+    	echo "No Calibration Data on HD"
+    	set SUBJECT="-SUBJECTNo_Calibration_Data_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+
+	else if ("$SOFTWARE_VERSION" == "DV" || "$SOFTWARE_VERSION" == "RX" || "$SOFTWARE_VERSION" == "MP") then
+		if ( -d /usr/g/recon_calib/ExamData/${EXAM_NUMBER}) then
+		    set status=`ls -A /usr/g/recon_calib/ExamData/${EXAM_NUMBER} | wc | awk '{print $1}'`
+		
+			if ("${status}" <= 0) then
+				set SUBJECT="-SUBJECTNo_Calibration_Data_for_Exam_$EXAM_NUMBER "
+				ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+			else
+				scp -r /usr/g/recon_calib/ExamData/${EXAM_NUMBER}/ ${SAVE_PATH}/CALIBDATA
+			endif
+		else
+			set SUBJECT="-SUBJECTNo_Calibration_Data_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		endif
+	endif
+endif
+
+
+
+if ($TRANSFER_PFILES == 1) then
+    echo "Transferring PFiles"
+	
+    set ALLPFILES = `find /usr/g/mrraw/ -maxdepth 1 -name "P*.7"`
+	#echo $ALLPFILES
+
+	set PFILES = ()
+	#echo $#ALLPFILES
+
+	set PFILE_FOUND=0
+
+	if ($#ALLPFILES == 0) then
+		set SUBJECT="-SUBJECTNo_PFiles_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+		foreach file ($ALLPFILES)
+
+			if ("$SOFTWARE_VERSION" == "HD") then
+    			set PFILE_EXAM=`examine_pfile ${file} | sed 's/[^ ]* \([^ ]*\).*/\1/'`
+				#echo $PFILE_EXAM
+			else if ("$SOFTWARE_VERSION" == "DV" || "$SOFTWARE_VERSION" == "RX" || "$SOFTWARE_VERSION" == "MP") then
+
+    			set EXAM_LINE = `/usr/g/M/tcolgan/ge_data_tools/pfile_info ${file} print | grep "Exam no"`
+				#echo ${file}
+				#echo ${EXAM_LINE}
+				set EQUAL_INDEX = `expr index "$EXAM_LINE" "="`
+				@ EQUAL_INDEX = $EQUAL_INDEX + 1
+				set SUBSTR = `echo ${EXAM_LINE} | awk -v myvar=$EQUAL_INDEX '{print substr($0,myvar)}'`
+				#echo ${SUBSTR}
+				set END_INDEX = `expr index "$SUBSTR" " "`
+				#echo ${END_INDEX}
+				set EXAM_STRING = `echo ${SUBSTR} | awk -v myvar=$END_INDEX '{print substr($0,0,myvar)}'`
+				#echo ${EXAM_STRING}
+				set PFILE_EXAM = `echo ${EXAM_STRING} | bc`
+				#echo ${PFILE_EXAM}
+
+			endif
+			
+
+			if ($PFILE_EXAM == $EXAM_NUMBER) then
+				set PFILES = ($file $PFILES)
+				set PFILE_FOUND=1
+			endif
+		end
+		#echo $PFILES
+
+		if ($PFILE_FOUND == 1) then
+			#make the pfile directory
+			ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}PFILES/"
+
+			foreach file ($PFILES)
+				scp ${file}  ${SAVE_PATH}PFILES/
+			end
+		else
+			set SUBJECT="-SUBJECTNo_PFiles_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		endif
+	endif
+endif
+
+if ($TRANSFER_KACQ == 1) then
+	echo "Transferring Kacqs for Pfiles"
+	
+	set ALLPFILES = `find /usr/g/mrraw/ -maxdepth 1 -name "P*.7"`
+
+	set PFILES = ()
+	#echo $#ALLPFILES
+
+	set PFILE_FOUND=0
+
+	if ($#ALLPFILES == 0) then
+		set SUBJECT="-SUBJECTNo_Kacqs_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+		foreach file ($ALLPFILES)
+
+			if ("$SOFTWARE_VERSION" == "HD") then
+    			set PFILE_EXAM=`examine_pfile ${file} | sed 's/[^ ]* \([^ ]*\).*/\1/'`
+				#echo $PFILE_EXAM
+			else if ("$SOFTWARE_VERSION" == "DV" || "$SOFTWARE_VERSION" == "RX" || "$SOFTWARE_VERSION" == "MP") then
+
+    			set EXAM_LINE = `/usr/g/M/tcolgan/ge_data_tools/pfile_info ${file} print | grep "Exam no"`
+				#echo ${file}
+				#echo ${EXAM_LINE}
+				set EQUAL_INDEX = `expr index "$EXAM_LINE" "="`
+				@ EQUAL_INDEX = $EQUAL_INDEX + 1
+				set SUBSTR = `echo ${EXAM_LINE} | awk -v myvar=$EQUAL_INDEX '{print substr($0,myvar)}'`
+				#echo ${SUBSTR}
+				set END_INDEX = `expr index "$SUBSTR" " "`
+				#echo ${END_INDEX}
+				set EXAM_STRING = `echo ${SUBSTR} | awk -v myvar=$END_INDEX '{print substr($0,0,myvar)}'`
+				#echo ${EXAM_STRING}
+				set PFILE_EXAM = `echo ${EXAM_STRING} | bc`
+				#echo ${PFILE_EXAM}
+
+			endif
+			
+
+			if ($PFILE_EXAM == $EXAM_NUMBER) then
+				set PFILES = ($file $PFILES)
+				set PFILE_FOUND=1
+			endif
+		end
+		#echo $PFILES
+
+		if ($PFILE_FOUND == 1) then
+			#make the pfile directory
+			#ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}PFILES/"
+
+			foreach file ($PFILES)
+				set EXAM_LINE = `/usr/g/M/tcolgan/ge_data_tools/pfile_info ${file} print | grep "kacq_uid"`
+				#echo ${EXAM_LINE}
+				set EQUAL_INDEX = `expr index "$EXAM_LINE" "="`
+				@ EQUAL_INDEX = $EQUAL_INDEX + 1
+				set SUBSTR = `echo ${EXAM_LINE} | awk -v myvar=$EQUAL_INDEX '{print substr($0,myvar)}'`
+				#echo ${SUBSTR}
+				set END_INDEX = `echo -n ${SUBSTR} | wc -m`
+				#echo ${END_INDEX}
+				set NUM_STRING = `echo ${SUBSTR} | awk -v myvar=$END_INDEX '{print substr($0,0,myvar)}'`
+				#echo ${NUM_STRING}
+				set KACQ_NUM = `echo ${NUM_STRING} | bc`
+				#echo "kacq_*.${KACQ_NUM}"
+
+				set ALLKACQ = `find /usr/g/mrraw/ -maxdepth 1 -name "kacq_*.${KACQ_NUM}"`
+
+				if ($#ALLKACQ == 0) then
+					set DESC_LINE = `/usr/g/M/tcolgan/ge_data_tools/pfile_info ${file} print | grep "Series Desc"`
+					#echo ${DESC_LINE}
+					set EQUAL_INDEX = `expr index "$DESC_LINE" "="`
+					@ EQUAL_INDEX = $EQUAL_INDEX + 1
+					set SUBSTR = `echo ${DESC_LINE} | awk -v myvar=$EQUAL_INDEX '{print substr($0,myvar)}'`
+					#echo ${SUBSTR}
+					set END_INDEX = `echo -n ${SUBSTR} | wc -m`
+					set DESC_STRING = `echo ${SUBSTR} | awk -v myvar=$END_INDEX '{print substr($0,0,myvar)}' | sed 's/ /_/g'`
+					#echo ${DESC_STRING}
+					set nchar = `echo ${file} | awk '{print length($0)}'`
+					#echo $nchar
+					@ nchar = $nchar - 7
+					#echo $nchar
+					set FILE_STRING = `echo ${file} | awk -v myvar=$nchar '{print substr($0,myvar)}'`
+					set SUBJECT="-SUBJECTNo_Kacqs_for_Exam_${EXAM_NUMBER}_Pfile_${DESC_STRING}_${FILE_STRING}"
+					ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+				else
+					foreach kacq ($ALLKACQ)
+						scp ${kacq} ${SAVE_PATH}PFILES/
+					end
+				endif
+			end
+		else
+			set SUBJECT="-SUBJECTNo_Kacqs_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		endif
+	endif
+endif
+
+
+if ($TRANSFER_MRE == 1) then
+    echo "Transferring MRE Raw Data Folder"
+
+	if ("$SOFTWARE_VERSION" == "HD") then
+    	echo "No MRE Data on HD"
+    	set SUBJECT="-SUBJECTNo_MRE_Data_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+
+	else if ("$SOFTWARE_VERSION" == "DV" || "$SOFTWARE_VERSION" == "RX" || "$SOFTWARE_VERSION" == "MP") then
+		if ( -d /usr/g/bin/mar/epimre/data) then
+		    set status=`ls -A /usr/g/bin/mar/epimre/data/e${EXAM_NUMBER}_* | wc | awk '{print $1}'`
+		
+			if ("${status}" <= 0) then
+				set SUBJECT="-SUBJECTNo_MRE_Data_for_Exam_$EXAM_NUMBER "
+				ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+			else
+				# Create Remote folder if it doesn't exist
+				ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}MREDATA"
+
+				scp -r /usr/g/bin/mar/epimre/data/e${EXAM_NUMBER}_* ${SAVE_PATH}MREDATA
+			endif
+		else
+			set SUBJECT="-SUBJECTNo_MRE_Data_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		endif
+	endif
+endif
+
+
+if ($TRANSFER_IDEALCHANCOMB == 1) then 
+    echo "Transferring Ideal Channel Combined data"
+
+	if ("$SOFTWARE_VERSION" == "HD") then
+    	set FLDATAFILES = `find /usr/g/mrraw/ -maxdepth 1 -name "ideal_fldata_raw${EXAM_NUMBER}_*.dat"`
+
+		if ( $#FLDATAFILES == 0 ) then
+	 		set SUBJECT="-SUBJECTNo_IDEAL_fldata_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		else
+			#make the IDEAL directory
+			ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}IDEAL/"
+
+			foreach file ($FLDATAFILES)
+				scp ${file}  ${SAVE_PATH}IDEAL/
+			end
+		endif
+	else if ("$SOFTWARE_VERSION" == "DV" || "$SOFTWARE_VERSION" == "RX" || "$SOFTWARE_VERSION" == "MP") then
+
+    	set H5FILES = `find /usr/g/mrraw/Ideal/ -maxdepth 1 -name "IdealChanCombData_${EXAM_NUMBER}_*.h5"`
+
+		if ( $#H5FILES == 0 ) then
+	 		set SUBJECT="-SUBJECTNo_IDEAL_Chan_Comb_Data_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		else
+			#make the IDEAL directory
+			ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}IDEAL/"
+
+			foreach file ($H5FILES)
+				scp ${file}  ${SAVE_PATH}IDEAL/
+			end
+		endif
+
+	endif
+	
+endif
+
+
+if ($TRANSFER_DICOMS == 1) then
+    echo "Transferring DICOMs"
+
+	set DICOM_LIST = `pathExtract ${EXAM_NUMBER}`
+	set DICOM_LENGTH = $#DICOM_LIST
+	set DICOM_FILES = `echo $DICOM_LIST[3-${DICOM_LENGTH}]:q`
+
+	#pathExtract ${exam_number} > /usr/g/M/tcolgan/temp${exam_number}.txt
+	#tail -n +2 /usr/g/M/tcolgan/temp${exam_number}.txt > /usr/g/M/tcolgan/files${exam_number}.txt
+	#mkdir /usr/g/M/tcolgan/dicoms_${exam_number}
+
+	#set DICOM_FILES = (`awk '{print}' "/usr/g/M/tcolgan/files$exam_number.txt"`)
+
+	set DICOM_DATE = `date +"%m%d%Y"`
+
+	set DICOM_FOLDER = "${EXAM_NUMBER}_${DICOM_DATE}"
+
+	if ($DICOM_LENGTH <= 2) then
+		set SUBJECT="-SUBJECTNo_Dicoms_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+
+		#make the dicom folder directory
+		if (! -d /usr/g/mrraw/${DICOM_FOLDER}) then
+			mkdir /usr/g/mrraw/${DICOM_FOLDER}
+		endif
+
+		foreach file ($DICOM_FILES)
+			#echo $file
+			set SERIES_STRING = `dcmdump -s -M +P 0020,0011 "${file}"`
+			#echo $SERIES_STRING:q
+			#echo $SERIES_STRING[3]:q
+	    	set SERIES_STR = `echo $SERIES_STRING[3]:q | sed 's/[][]//g'`
+	    	set SERIES_NUM = `echo ${SERIES_STR} | bc | awk '{printf "%03d", $0}'` 
+	    	#echo $SERIES_NUM
+			set SLICE_STRING = `dcmdump -s -M +P 0020,0013 "${file}"`
+			set SLICE_STR = `echo $SLICE_STRING[3]:q | sed 's/[][]//g'`
+			set SLICE_NUM = `echo ${SLICE_STR} | bc | awk '{printf "%04d", $0}'` 
+			#echo $SLICE_NUM
+
+			#check if directory does not exist
+			if (! -d /usr/g/mrraw/${DICOM_FOLDER}/${SERIES_NUM}) then
+				mkdir /usr/g/mrraw/${DICOM_FOLDER}/${SERIES_NUM}
+			endif
+
+			#copy the file over
+			scp -r $file /usr/g/mrraw/${DICOM_FOLDER}/${SERIES_NUM}/I$SLICE_NUM.dcm
+		end
+
+		scp -r /usr/g/mrraw/${DICOM_FOLDER} ${SAVE_PATH}
+	endif
+endif
+
+
+if ($TRANSFER_IDEAL2DGATING == 1) then
+
+	if ("$SOFTWARE_VERSION" == "HD") then
+		echo "No IDEAL 2D Gating support on HD"
+		set SUBJECT="-SUBJECTNo_Ideal2D_Gating_Files_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+
+    	echo "Transferring IDEAL2D Gating Files"
+	
+    	set SCANARCHIVE_DIRECTORY = "/data/arc/Closed/Exam"
+		set GATING_DIRECTORY = "/usr/g/mrraw/"
+
+		set GATING_FILES = ""
+
+		set first_folder = `rsh icn1 "ls -rt ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER} | head -1"`
+		#echo ${first_folder}
+		set first_file = `rsh icn1 "ls -rt ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER}/${first_folder} | head -1"`
+		#echo ${first_file}
+		set underscore_index = `echo ${first_file} | grep -aob "_" | grep -oE "[0-9]+"| head -2 | tail -1`
+		@ year_index = $underscore_index + 2
+		@ month_index = $underscore_index + 6
+		@ day_index = $underscore_index + 8
+		@ hour_index = $underscore_index + 11
+		@ min_index = $underscore_index + 13
+
+
+		#echo ${underscore_index}
+		set start_year=`echo ${first_file} | awk -v myvar=$year_index '{print substr($0,myvar,4)}'`
+		set start_month=`echo ${first_file} | awk -v myvar=$month_index '{print substr($0,myvar,2)}'`
+		set start_day=`echo ${first_file} | awk -v myvar=$day_index '{print substr($0,myvar,2)}'`
+		set start_hour=`echo ${first_file} | awk -v myvar=$hour_index '{print substr($0,myvar,2)}'`
+		set start_min=`echo ${first_file} | awk -v myvar=$min_index '{print substr($0,myvar,2)}'`
+
+		#echo $start_year
+		#echo $start_month
+		#echo $start_day
+		#echo $start_hour
+		#echo $start_min
+
+		set TIMEZONE = `date +%Z | grep -e CST`
+
+		if ($TIMEZONE == "CST") then
+			set TIMEZONE="CST"
+		else
+			set TIMEZONE="CDT"
+		endif
+
+		set start_date="$start_year$start_month$start_day ${start_hour}:$start_min $TIMEZONE"
+		#echo "$start_date"
+		set first_date = `date -d "$start_date -1 minute"`
+		#echo $first_date
+
+		set start_year=`date -d "$first_date" '+%Y'`
+		set start_month=`date -d "$first_date" '+%m' | bc | awk '{printf "%d", $0}'`
+		set start_day=`date -d "$first_date" '+%d' | bc | awk '{printf "%d", $0}'`
+		set start_hour=`date -d "$first_date" '+%H' | bc | awk '{printf "%d", $0}'`
+		set start_min=`date -d "$first_date" '+%M'`
+
+   
+		#echo "New start times"
+		#echo $start_year
+		#echo $start_month
+		#echo $start_day
+		#echo $start_hour
+		#echo $start_min
+
+		set last_folder = `rsh icn1 "ls -t ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER} | head -1"`
+		#echo ${last_folder}
+		set last_file = `rsh icn1 "ls -t ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER}/${last_folder} | head -1"`
+		#echo ${last_file}
+
+		set underscore_index = `echo ${last_file} | grep -aob "_" | grep -oE "[0-9]+"| head -2 | tail -1`
+		@ year_index = $underscore_index + 2
+		@ month_index = $underscore_index + 6
+		@ day_index = $underscore_index + 8
+		@ hour_index = $underscore_index + 11
+		@ min_index = $underscore_index + 13
+		#echo ${underscore_index}
+		set last_year = `echo ${last_file} | awk -v myvar=$year_index '{print substr($0,myvar,4)}'`
+		set last_month = `echo ${last_file} | awk -v myvar=$month_index '{print substr($0,myvar,2)}'`
+		set last_day = `echo ${last_file} | awk -v myvar=$day_index '{print substr($0,myvar,2)}'`
+		set last_hour = `echo ${last_file} | awk -v myvar=$hour_index '{print substr($0,myvar,2)}'`
+		set last_min = `echo ${last_file} | awk -v myvar=$min_index '{print substr($0,myvar,2)}'`
+
+		#echo $last_year
+		#echo $last_month
+		#echo $last_day
+		#echo $last_hour
+		#echo $last_min
+
+		set last_date="$last_year$last_month$last_day ${last_hour}:$last_min $TIMEZONE"
+		#echo "$last_date"
+		set last_date = `date -d "$last_date +1 minute"`
+		#echo $last_date
+
+		set last_year=`date -d "$last_date" '+%Y'`
+		set last_month=`date -d "$last_date" '+%m' | bc | awk '{printf "%d", $0}'`
+		set last_day=`date -d "$last_date" '+%d' | bc | awk '{printf "%d", $0}'`
+		set last_hour=`date -d "$last_date" '+%H' | bc | awk '{printf "%d", $0}'`
+		set last_min=`date -d "$last_date" '+%M'`
+
+		#echo "New end times"
+		#echo $last_year
+		#echo $last_month
+		#echo $last_day
+		#echo $last_hour
+		#echo $last_min
+
+		set times = ""
+
+		#Assume a maximum scan time of 24 hours
+		if ($last_hour != $start_hour) then
+			if ($last_day != $start_day) then
+				foreach time (`(seq $start_hour 24)|awk '{printf "%d\n",$0}'`)
+					if ($time == $start_hour) then
+						set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$start_year'_m'$start_month'_d'$start_day'_h'$start_hour'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					else
+						set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$start_day'_h'$time'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					endif
+				end
+				foreach time2 (`(seq 0 $last_hour)|awk '{printf "%d\n",$0}'`)
+					if ($time2 == $last_hour) then
+						set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					else
+						set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$time2'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					endif
+				end
+			else
+				#it only caried over an hour(s)
+				foreach time (`(seq $start_hour $last_hour)|awk '{printf "%d\n",$0}'`)
+					if ($time == $start_hour) then
+						set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$start_hour'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					else if ($time == $last_hour) then
+						set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					else
+						set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$time'_m,;s,$,.pcvipr_track,'`
+						set times = ($times $temp)
+					endif
+				end
+			endif
+		else
+			# it didn't carry over anything
+			set times = `(seq $start_min $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Ideal2D_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+		endif
+        
+        	#echo $times
+
+		foreach file ($times)
+
+	    	set temp = "`echo $file | sed 's,.pcvipr_track,"_\*",g'`"
+	    	set file = `sh -c "ls $temp 2>/dev/null"`
+			set GATING_FILES = ($GATING_FILES $file)
+		end
+
+	
+		set GATING_LENGTH = $#GATING_FILES
+    	#echo $GATING_LENGTH
+
+		if ($GATING_LENGTH == 0) then
+			set SUBJECT="-SUBJECTNo_Ideal2D_Gating_Files_for_Exam_$EXAM_NUMBER "
+			ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+		else
+			#make the IDEAL directory
+			ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}GATING/"
+			foreach file ($GATING_FILES)
+				scp ${file}  ${SAVE_PATH}GATING/
+			end
+		endif
+	endif
+endif
+
+if ($TRANSFER_DWIGATING == 1) then
+    echo "Transferring DWI Gating Files"
+	
+	set SCANARCHIVE_DIRECTORY = "/data/arc/Closed/Exam"
+	set GATING_DIRECTORY = "/usr/g/mrraw/"
+
+	set GATING_FILES = ""
+
+	set first_folder = `rsh icn1 "ls -rt ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER} | head -1"`
+	#echo ${first_folder}
+	set first_file = `rsh icn1 "ls -rt ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER}/${first_folder} | head -1"`
+	#echo ${first_file}
+	set underscore_index = `echo ${first_file} | grep -aob "_" | grep -oE "[0-9]+"| head -2 | tail -1`
+	@ year_index = $underscore_index + 2
+	@ month_index = $underscore_index + 6
+	@ day_index = $underscore_index + 8
+	@ hour_index = $underscore_index + 11
+	@ min_index = $underscore_index + 13
+
+
+	#echo ${underscore_index}
+	set start_year=`echo ${first_file} | awk -v myvar=$year_index '{print substr($0,myvar,4)}'`
+	set start_month=`echo ${first_file} | awk -v myvar=$month_index '{print substr($0,myvar,2)}'`
+	set start_day=`echo ${first_file} | awk -v myvar=$day_index '{print substr($0,myvar,2)}'`
+	set start_hour=`echo ${first_file} | awk -v myvar=$hour_index '{print substr($0,myvar,2)}'`
+	set start_min=`echo ${first_file} | awk -v myvar=$min_index '{print substr($0,myvar,2)}'`
+
+	#echo $start_year
+	#echo $start_month
+	#echo $start_day
+	#echo $start_hour
+	#echo $start_min
+
+	set TIMEZONE = `date +%Z | grep -e CST`
+
+	if ($TIMEZONE == "CST") then
+		set TIMEZONE="CST"
+	else
+		set TIMEZONE="CDT"
+	endif
+
+	set start_date="$start_year$start_month$start_day ${start_hour}:$start_min $TIMEZONE"
+	#echo "$start_date"
+	set first_date = `date -d "$start_date -1 minute"`
+	#echo $first_date
+
+	set start_year=`date -d "$first_date" '+%Y'`
+	set start_month=`date -d "$first_date" '+%m' | bc | awk '{printf "%d", $0}'`
+	set start_day=`date -d "$first_date" '+%d' | bc | awk '{printf "%d", $0}'`
+	set start_hour=`date -d "$first_date" '+%H' | bc | awk '{printf "%d", $0}'`
+	set start_min=`date -d "$first_date" '+%M'`
+
+   
+	#echo "New start times"
+	#echo $start_year
+	#echo $start_month
+	#echo $start_day
+	#echo $start_hour
+	#echo $start_min
+
+	set last_folder = `rsh icn1 "ls -t ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER} | head -1"`
+	#echo ${last_folder}
+	set last_file = `rsh icn1 "ls -t ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER}/${last_folder} | head -1"`
+	#echo ${last_file}
+
+	set underscore_index = `echo ${last_file} | grep -aob "_" | grep -oE "[0-9]+"| head -2 | tail -1`
+	@ year_index = $underscore_index + 2
+	@ month_index = $underscore_index + 6
+	@ day_index = $underscore_index + 8
+	@ hour_index = $underscore_index + 11
+	@ min_index = $underscore_index + 13
+	#echo ${underscore_index}
+	set last_year = `echo ${last_file} | awk -v myvar=$year_index '{print substr($0,myvar,4)}'`
+	set last_month = `echo ${last_file} | awk -v myvar=$month_index '{print substr($0,myvar,2)}'`
+	set last_day = `echo ${last_file} | awk -v myvar=$day_index '{print substr($0,myvar,2)}'`
+	set last_hour = `echo ${last_file} | awk -v myvar=$hour_index '{print substr($0,myvar,2)}'`
+	set last_min = `echo ${last_file} | awk -v myvar=$min_index '{print substr($0,myvar,2)}'`
+
+	#echo $last_year
+	#echo $last_month
+	#echo $last_day
+	#echo $last_hour
+	#echo $last_min
+
+	set last_date="$last_year$last_month$last_day ${last_hour}:$last_min $TIMEZONE"
+	#echo "$last_date"
+	set last_date = `date -d "$last_date +1 minute"`
+	#echo $last_date
+
+	set last_year=`date -d "$last_date" '+%Y'`
+	set last_month=`date -d "$last_date" '+%m' | bc | awk '{printf "%d", $0}'`
+	set last_day=`date -d "$last_date" '+%d' | bc | awk '{printf "%d", $0}'`
+	set last_hour=`date -d "$last_date" '+%H' | bc | awk '{printf "%d", $0}'`
+	set last_min=`date -d "$last_date" '+%M'`
+
+	#echo "New end times"
+	#echo $last_year
+	#echo $last_month
+	#echo $last_day
+	#echo $last_hour
+	#echo $last_min
+
+	set times = ""
+
+	#Assume a maximum scan time of 24 hours
+	if ($last_hour != $start_hour) then
+		if ($last_day != $start_day) then
+			foreach time (`(seq $start_hour 24)|awk '{printf "%d\n",$0}'`)
+				if ($time == $start_hour) then
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$start_year'_m'$start_month'_d'$start_day'_h'$start_hour'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				else
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$start_day'_h'$time'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				endif
+			end
+			foreach time2 (`(seq 0 $last_hour)|awk '{printf "%d\n",$0}'`)
+				if ($time2 == $last_hour) then
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				else
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$time2'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				endif
+			end
+		else
+			#it only caried over an hour(s)
+			foreach time (`(seq $start_hour $last_hour)|awk '{printf "%d\n",$0}'`)
+				if ($time == $start_hour) then
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$start_hour'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				else if ($time == $last_hour) then
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				else
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$time'_m,;s,$,.rsp_track,'`
+					set times = ($times $temp)
+				endif
+			end
+		endif
+	else
+		# it didn't carry over anything
+		set times = `(seq $start_min $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/DWI_Resp_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.rsp_track,'`
+	endif
+        
+        #echo $times
+
+	foreach file ($times)
+
+	    set temp = "`echo $file | sed 's,.rsp_track,"_\*",g'`"
+	    set file = `sh -c "ls $temp 2>/dev/null"`
+		set GATING_FILES = ($GATING_FILES $file)
+	end
+
+	
+	set GATING_LENGTH = $#GATING_FILES
+    #echo $GATING_LENGTH
+
+	if ($GATING_LENGTH == 0) then
+		set SUBJECT="-SUBJECTNo_DWI_Gating_Files_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+		#make the IDEAL directory
+		ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}GATING/"
+		foreach file ($GATING_FILES)
+			scp ${file}  ${SAVE_PATH}GATING/
+		end
+	endif
+   
+endif
+
+if ($TRANSFER_PCVIPRGATING == 1) then
+    echo "Transferring PCVIPR Gating Files"
+	
+	set SCANARCHIVE_DIRECTORY = "/data/arc/Closed/Exam"
+	set GATING_DIRECTORY = "/usr/g/mrraw/"
+
+	set GATING_FILES = ""
+
+	set first_folder = `rsh icn1 "ls -rt ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER} | head -1"`
+	#echo ${first_folder}
+	set first_file = `rsh icn1 "ls -rt ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER}/${first_folder} | head -1"`
+	#echo ${first_file}
+	set underscore_index = `echo ${first_file} | grep -aob "_" | grep -oE "[0-9]+"| head -2 | tail -1`
+	@ year_index = $underscore_index + 2
+	@ month_index = $underscore_index + 6
+	@ day_index = $underscore_index + 8
+	@ hour_index = $underscore_index + 11
+	@ min_index = $underscore_index + 13
+
+
+	#echo ${underscore_index}
+	set start_year=`echo ${first_file} | awk -v myvar=$year_index '{print substr($0,myvar,4)}'`
+	set start_month=`echo ${first_file} | awk -v myvar=$month_index '{print substr($0,myvar,2)}'`
+	set start_day=`echo ${first_file} | awk -v myvar=$day_index '{print substr($0,myvar,2)}'`
+	set start_hour=`echo ${first_file} | awk -v myvar=$hour_index '{print substr($0,myvar,2)}'`
+	set start_min=`echo ${first_file} | awk -v myvar=$min_index '{print substr($0,myvar,2)}'`
+
+	#echo $start_year
+	#echo $start_month
+	#echo $start_day
+	#echo $start_hour
+	#echo $start_min
+
+	set TIMEZONE = `date +%Z | grep -e CST`
+
+	if ($TIMEZONE == "CST") then
+		set TIMEZONE="CST"
+	else
+		set TIMEZONE="CDT"
+	endif
+
+	set start_date="$start_year$start_month$start_day ${start_hour}:$start_min $TIMEZONE"
+	#echo "$start_date"
+	set first_date = `date -d "$start_date -1 minute"`
+	#echo $first_date
+
+	set start_year=`date -d "$first_date" '+%Y'`
+	set start_month=`date -d "$first_date" '+%m' | bc | awk '{printf "%d", $0}'`
+	set start_day=`date -d "$first_date" '+%d' | bc | awk '{printf "%d", $0}'`
+	set start_hour=`date -d "$first_date" '+%H' | bc | awk '{printf "%d", $0}'`
+	set start_min=`date -d "$first_date" '+%M'`
+
+   
+	#echo "New start times"
+	#echo $start_year
+	#echo $start_month
+	#echo $start_day
+	#echo $start_hour
+	#echo $start_min
+
+	set last_folder = `rsh icn1 "ls -t ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER} | head -1"`
+	#echo ${last_folder}
+	set last_file = `rsh icn1 "ls -t ${SCANARCHIVE_DIRECTORY}${EXAM_NUMBER}/${last_folder} | head -1"`
+	#echo ${last_file}
+
+	set underscore_index = `echo ${last_file} | grep -aob "_" | grep -oE "[0-9]+"| head -2 | tail -1`
+	@ year_index = $underscore_index + 2
+	@ month_index = $underscore_index + 6
+	@ day_index = $underscore_index + 8
+	@ hour_index = $underscore_index + 11
+	@ min_index = $underscore_index + 13
+	#echo ${underscore_index}
+	set last_year = `echo ${last_file} | awk -v myvar=$year_index '{print substr($0,myvar,4)}'`
+	set last_month = `echo ${last_file} | awk -v myvar=$month_index '{print substr($0,myvar,2)}'`
+	set last_day = `echo ${last_file} | awk -v myvar=$day_index '{print substr($0,myvar,2)}'`
+	set last_hour = `echo ${last_file} | awk -v myvar=$hour_index '{print substr($0,myvar,2)}'`
+	set last_min = `echo ${last_file} | awk -v myvar=$min_index '{print substr($0,myvar,2)}'`
+
+	#echo $last_year
+	#echo $last_month
+	#echo $last_day
+	#echo $last_hour
+	#echo $last_min
+
+	set last_date="$last_year$last_month$last_day ${last_hour}:$last_min $TIMEZONE"
+	#echo "$last_date"
+	set last_date = `date -d "$last_date +1 minute"`
+	#echo $last_date
+
+	set last_year=`date -d "$last_date" '+%Y'`
+	set last_month=`date -d "$last_date" '+%m' | bc | awk '{printf "%d", $0}'`
+	set last_day=`date -d "$last_date" '+%d' | bc | awk '{printf "%d", $0}'`
+	set last_hour=`date -d "$last_date" '+%H' | bc | awk '{printf "%d", $0}'`
+	set last_min=`date -d "$last_date" '+%M'`
+
+	#echo "New end times"
+	#echo $last_year
+	#echo $last_month
+	#echo $last_day
+	#echo $last_hour
+	#echo $last_min
+
+	set times = ""
+
+	#Assume a maximum scan time of 24 hours
+	if ($last_hour != $start_hour) then
+		if ($last_day != $start_day) then
+			foreach time (`(seq $start_hour 24)|awk '{printf "%d\n",$0}'`)
+				if ($time == $start_hour) then
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$start_year'_m'$start_month'_d'$start_day'_h'$start_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$start_year'_m'$start_month'_d'$start_day'_h'$start_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$start_hour',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				else
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$start_day'_h'$time'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$start_day'_h'$time'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$time',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				endif
+			end
+			foreach time2 (`(seq 0 $last_hour)|awk '{printf "%d\n",$0}'`)
+				if ($time2 == $last_hour) then
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$last_hour',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				else
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$last_day'_h'$time2'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$last_day'_h'$time2'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$time2',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				endif
+			end
+		else
+			#it only caried over an hour(s)
+			foreach time (`(seq $start_hour $last_hour)|awk '{printf "%d\n",$0}'`)
+				if ($time == $start_hour) then
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$last_day'_h'$start_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$last_day'_h'$start_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq $start_min 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$start_hour',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				else if ($time == $last_hour) then
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$last_hour',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				else
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$last_day'_h'$time'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$last_day'_h'$time'_m,;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+					set temp = `(seq 0 59)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$time',;s,$,.pcvipr_track,'`
+					set times = ($times $temp)
+				endif
+			end
+		endif
+	else
+		# it didn't carry over anything
+		set temp = `(seq $start_min $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+		set times = ($times $temp)
+		set temp = `(seq $start_min $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_info_y'$last_year'_m'$last_month'_d'$last_day'_h'$last_hour'_m,;s,$,.pcvipr_track,'`
+		set times = ($times $temp)
+		set temp = `(seq $start_min $last_min)|awk '{printf "%02d\n",$0}'|sed 's,^,/usr/g/mrraw/Gating_Track_'$last_hour',;s,$,.pcvipr_track,'`
+		set times = ($times $temp)
+	endif
+        
+    #echo $times
+
+	foreach file ($times)
+
+	    set temp = "`echo $file | sed 's,.pcvipr_track,"\*",g'`"
+	    #echo "$temp"
+	    set file = `sh -c "ls $temp 2>/dev/null"`
+
+	    set FILE_LENGTH = $#file
+
+	    if ($FILE_LENGTH != 0) then
+	    	foreach extension ($file) #often there are .pcvipr_track and .pcvipr_track.full
+	    		#echo "$extension"
+				set MOD_TIME = `stat -c %y $extension`
+				#echo $MOD_TIME
+				set MOD_year=`date -d "$MOD_TIME" '+%Y'`
+				set MOD_month=`date -d "$MOD_TIME" '+%m' | bc | awk '{printf "%d", $0}'`
+				set MOD_day=`date -d "$MOD_TIME" '+%d' | bc | awk '{printf "%d", $0}'`
+				if ($MOD_year == $start_year || $MOD_year == $last_year) then
+					if ($MOD_month == $start_month || $MOD_month == $last_month) then
+						if ($MOD_day == $start_day || $MOD_day == $last_day) then
+							set GATING_FILES = ($GATING_FILES $extension)
+						endif
+					endif
+				endif
+			end
+		endif
+	end
+
+	
+	set GATING_LENGTH = $#GATING_FILES
+    #echo $GATING_LENGTH
+
+	if ($GATING_LENGTH == 0) then
+		set SUBJECT="-SUBJECTNo_PCVIPR_Gating_Files_for_Exam_$EXAM_NUMBER "
+		ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+	else
+		#make the IDEAL directory
+		ssh ${USER_MACHINE} "mkdir -p ${SAVE_FOLDER}GATING/"
+		foreach file ($GATING_FILES)
+			scp ${file}  ${SAVE_PATH}GATING/
+		end
+	endif
+   
+endif

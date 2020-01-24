@@ -1,0 +1,50 @@
+#!/bin/csh
+
+# You only need to set the two following variables
+set EMAIL=BLAH.office365.wisc.edu@amer.teams.ms
+
+# This script will automatically append the ExamNumber_Date later
+set SAVEPATH=abc123@ip_address:/home/abc123/r-fcb-isilon/groups/ReederGroup/abc123/Studies/01WLSNAFLD/
+
+# And create symbolic links in these two folders for this script
+#aliases in /usr/g/bin and /export/home/sdc/wf/
+#ln -s /usr/g/M/abc/EXAMPLE /export/home/sdc/wf/EXAMPLE
+
+echo "Enter exam number :"
+set EXAM_NUMBER = $<
+
+set WAIT=1
+
+foreach name ($argv)
+	case -NOWAIT*:
+	case -nowait*:
+		echo "There is no time\!\!\! Starting immediately"
+		set WAIT=0
+		breaksw
+
+	default:
+		WAIT=1
+		breaksw
+	endsw
+end
+
+
+if ($WAIT == 1) then
+	echo "Waiting for 10 minutes before starting transfer"
+	sleep 10m
+endif
+
+
+
+set SUBJECT="-SUBJECTStarted_Data_Transfer_for_Exam_$EXAM_NUMBER "
+set RECEPIENT="-EMAIL$EMAIL"
+ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}
+
+set TODAY = `date +"%Y_%m_%d"`
+
+
+/usr/g/M/tcolgan/DataTransfer -PATH${SAVEPATH}${EXAM_NUMBER}_$TODAY/ -DICOMS -PFILES -IDEAL2DGATING -DWIGATING -PCVIPRGATING -CALIB -PFILEKACQ -SCANARCHIVE -IDEALCHANCOMB -MRE -EXAMNUMBER$EXAM_NUMBER $RECEPIENT |& tee /usr/g/mrraw/DataTransferExam${EXAM_NUMBER}.log
+
+
+set SUBJECT="-SUBJECTFinished_Data_Transfer_for_Exam_$EXAM_NUMBER "
+ssh tcolgan\@cn0 /data/users/tcolgan/DataTransfer_email ${SUBJECT} ${RECEPIENT}

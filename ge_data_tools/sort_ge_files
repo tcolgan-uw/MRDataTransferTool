@@ -1,0 +1,244 @@
+#!/bin/bash
+
+main(){
+
+if [ "$#" -gt 1 ]; then
+    echo "Usage is sort_ge_files [folder]"
+	exit 1
+fi
+
+
+
+if [ "$#" -eq 0 ]; then
+    echo "You did not provide an archive folder"
+	ARCHIVE_FOLDER=$(pwd)
+else
+	ARCHIVE_FOLDER=$1
+fi
+
+if [ -d $ARCHIVE_FOLDER ]
+then
+	echo "Archive folder is $ARCHIVE_FOLDER"
+else
+	echo "Archive folder does not exist ( $ARCHIVE_FOLDER )"
+	return 1 
+fi
+
+
+GE_FILES=($(find -type f -name  "P*.7" -o -type f -name "ScanArchive*.h5" ))
+
+for CURRENT_FILE in "${GE_FILES[@]}";
+do
+	
+	echo $CURRENT_FOLDER
+	
+	HEADER=`pfile_info $CURRENT_FILE print`
+	
+	if [ $? -ne 0 ]
+	then
+		echo "File is not a Pfile!"
+		FOLDER="Unknown_GE_Files"		
+		mkdir -p $ARCHIVE_FOLDER/$FOLDER	
+		if [ $? -ne 0 ] ; then
+    		echo "Could not create directory $FOLDER!! Exiting"
+			exit 1
+		fi
+		
+		check_mv $CURRENT_FILE $ARCHIVE_FOLDER/$FOLDER
+		if [ $? -ne 0 ] ; then
+    		echo "Could not move $CURRENT_FILE to $ARCHIVE_FOLDER/$FOLDER!! Exiting"
+			exit 1
+		fi
+				
+	else
+		
+	# Grab the header variables
+	KACQUID=$(get_field "${HEADER}" rdbhead.rdb_hdr_kacq_uid)
+	EXAM=$(get_field "${HEADER}" examhead.ex_no)
+	SERIES=$(get_field "${HEADER}" serieshead.se_no)
+	DESC=$(get_field_scrubbed "${HEADER}" serieshead.se_desc) 
+	EX_DESC=$(get_field_scrubbed "${HEADER}" examhead.ex_desc)
+	RADIOLOGIST=$(get_field "${HEADER}" examhead.diagrad)
+	SCAN_DATE=$(get_field "${HEADER}" examhead.ex_datetime) 
+	SUBJECT_NAME=$(get_field "${HEADER}" examhead.patnameff) 
+	EX_UID=$(get_field "${HEADER}" examhead.study_uid) 
+	GATING_ID=$(get_field "${HEADER}" pcvipr_id)
+	EXAM=$(printf %05d $EXAM)
+	SERIES=$(printf %05d $SERIES)
+	
+	# Print for good measure
+	echo "  Kacq UID = $KACQUID"
+	echo "  Exam = $EXAM"
+	echo "    Desc = $EX_DESC"
+	echo "    UID = $EX_UID"
+	echo "  Series = $SERIES"
+	echo "    Desc = $DESC"
+	echo "  Radiologist = $RADIOLOGIST"
+	echo "  Subject Name = $SUBJECT_NAME"
+	echo "  Scan Date = $SCAN_DATE"
+	
+	if [ "${#RADIOLOGIST}" -gt "0" ]
+	then 
+		echo "Using Radiologist Field for Folder Naming"
+		IFS='^' read -ra ARRAY <<< "$RADIOLOGIST"
+		
+		FOLDER=""
+		for j in "${ARRAY[@]}"; do
+    		FOLDER=$FOLDER$j"_"
+		done
+		FOLDER=${FOLDER%?} 
+		
+		if [ "${#ARRAY}" -eq "0" ]
+		then
+			FOLDER="Unknown_GE_Files"
+		fi
+	
+	else
+		echo "  Using Patient Name for Folder Naming"
+		IFS='^' read -ra ARRAY <<< "$SUBJECT_NAME"
+		
+		FOLDER=""
+		for j in "${ARRAY[@]}"; do
+    		FOLDER=$FOLDER$j"_"
+		done
+		FOLDER=${FOLDER%?} 
+		
+		if [ "${#ARRAY}" -eq "0" ]
+		then
+			FOLDER="Unknown_GE_Files"
+		fi
+	fi
+	FOLDER=$(scrub_field ${FOLDER})
+	
+	#
+	# Create folder names for subject
+	#
+	if [ "${#SCAN_DATE}" -gt "0" ]
+	then 
+		VISIT_FOLDER=$(scrub_field ${FOLDER}"_"$EXAM"_"${SCAN_DATE})
+	else
+		VISIT_FOLDER=$(scrub_field $CURRENT_FILE)
+		VISIT_FOLDER=${VISIT_FOLDER#.}
+	fi
+	VISIT_FOLDER="$ARCHIVE_FOLDER/$VISIT_FOLDER"
+		
+	#
+	# Create folder names for scan
+	#
+	SCAN_FOLDER="${EXAM}_${SERIES}_${DESC}"
+	SCAN_FOLDER=$(scrub_field ${SCAN_FOLDER})
+		
+	#
+	# Look for files related to the scan
+	#			
+	ACC_FILES=""			
+	
+	if [ "${#KACQUID}" -gt "0" ]
+	then
+		ACC_FILES+=$(find -maxdepth 4 -name "*$KACQUID*" ) 
+	fi
+	
+	if [ "${#GATING_ID}" -gt "0" ]
+	then
+		ACC_FILES+=$(find -maxdepth 4 -name "*$GATING_ID*" ) 
+	fi
+		
+	echo "  Accessory files = $ACC_FILES"
+	
+	#
+	# Actually Create Directory Structures
+	#	
+	echo "  Gating ID = $GATING_ID"
+	echo "  Visit Folder = $VISIT_FOLDER"
+
+	mkdir -p $VISIT_FOLDER
+	if [ $? -ne 0 ] ; then
+    	echo "Could not create directory $VISIT_FOLDER!! Exiting"
+		exit 1
+	fi
+	
+	mkdir -p $VISIT_FOLDER/$SCAN_FOLDER
+	if [ $? -ne 0 ] ; then
+    	echo "Could not create directory $VISIT_FOLDER/$SCAN_FOLDER!! Exiting"
+		exit 1
+	fi
+	
+	
+	mkdir -p $VISIT_FOLDER/$SCAN_FOLDER/raw_data/
+	if [ $? -ne 0 ] ; then
+    	echo "Could not create directory $VISIT_FOLDER/$SCAN_FOLDER/raw_data!! Exiting"
+		exit 1
+	fi
+	
+	mkdir -p $VISIT_FOLDER/$SCAN_FOLDER/processed_data/
+	if [ $? -ne 0 ] ; then
+    	echo "Could not create directory $VISIT_FOLDER/$SCAN_FOLDER/raw_data!! Exiting"
+		exit 1
+	fi
+
+	# 
+	# Copy accessory files
+	#
+	for acc in ${ACC_FILES[@]}
+	do 
+		echo "Working on file $acc"
+		check_mv $acc $VISIT_FOLDER/$SCAN_FOLDER/raw_data/	
+	done
+	
+	#
+	# Copy the main file
+	# 			
+	check_mv $CURRENT_FILE $VISIT_FOLDER/$SCAN_FOLDER/raw_data/
+	
+	
+	fi # Whether scan or not
+done
+}
+
+get_field() {
+	# Get the kacquid and grab all files in the folder with that number
+	local temp=`echo "$1" | grep $2`
+	local temp1=${temp#*$2=} 
+	echo $temp1
+}
+
+get_field_scrubbed() {
+	# Get the kacquid and grab all files in the folder with that number
+	local temp=`echo "$1" | grep $2`
+	local temp=${temp#*$2=} 
+	local temp=${temp// /_}
+	local temp=${temp//[^-_.[:alnum:]]/}
+	echo $temp
+}
+
+scrub_field() {
+	# Get the kacquid and grab all files in the folder with that number
+	local temp="$1"
+	local temp=${temp// /_}
+	local temp=${temp//[^-_[:alnum:]]/}
+	echo $temp
+}
+
+function check_mv () {
+
+if [ "$1" -ef "$2" ]
+then 
+	echo "Check_mv:: $1 and $2 are the same file"
+	return 0
+fi
+
+if [ -d $2 ]
+then
+	echo " Yes - In is folder"
+else
+	echo "Moving $1 to $2 but $2 is not a folder!!!!"
+	return 1 
+fi
+
+
+mv -i $1 $2
+return 0 
+
+}
+
+main "$@"

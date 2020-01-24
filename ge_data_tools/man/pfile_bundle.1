@@ -1,0 +1,41 @@
+.\" Manpage for pfile_bundle."
+.TH man 1 "07 July 2017" "1.0" "pfile_bundle man page"
+.SH NAME
+pfile_bundle : Code to compress a pfile while retaining access to header
+
+.SH DESCRIPTION
+pfile_bundle is a bash script designed to compress a pfile. It has two main purposes. 1st it deplicates the header into text, xml, and as an uncompressed copy. 2nd is does gzip compression with checks to ensure the compression was sucessful. The outputs will be:
+
+.IP Pfile.7.md5_checksum 
+The md5 checksum of the file
+
+.IP Pfile.7.header.txt 
+Human readable text
+
+.IP Pfile.7.header.xml  
+Xml header structure (partial)
+
+.IP Pfile.7.raw_header.bin 
+Full binary header
+
+.IP Pfile.7.gz 
+The compressed pfile
+
+.SH EXAMPLES
+Navigate to location with pfiles. (e.g.$cd / data / ). Run the script(e.g.$pfile_bundle Pfile.7). 
+
+.SH OPTIONS
+Accepts one argument with must be the pfile name.
+
+.SH SEE ALSO
+pfile_info
+sort_all_pfiles
+index_pfiles
+
+.SH BUGS
+- Error checking is likely incomplete. 
+
+.SH AUTHOR
+Initial author - Kevin Johnson(kmjohnson3@wisc.edu)
+
+

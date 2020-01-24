@@ -1,0 +1,24 @@
+.\" Manpage for index_pfiles."
+.TH man 1 "07 July 2017" "1.0" "index_pfiles man page"
+.SH NAME
+index_pfiles : Code to recursively parse a directory tree and put the info into a xml database
+
+.SH DESCRIPTION
+index_pfiles is a bash script designed create an xml database. It calls "pfile_info Pxx.7 xml" for every pfile it can find in the current directory tree and puts the output into "file_info.xml".  Its also copies the schmea "pfile.xsd" into the current directory. File info should be viewable in a browser or excel. 
+
+.SH EXAMPLES
+Navigate to current directory with pfiles. (e.g. $cd /data/). Run the script (e.g. $index_pfiles ). Open the output (e.g. $cat file_info.xml | more ).
+
+.SH OPTIONS
+Code has no options.
+
+.SH SEE ALSO
+pfile_info
+sort_all_pfiles
+pfile_bundle
+
+.SH BUGS
+-Code does not follow symbolic links. This was on purpose but may be an issue.
+
+.SH AUTHOR
+Initial author - Kevin Johnson (kmjohnson3@wisc.edu)

@@ -1,0 +1,64 @@
+#!/bin/bash
+
+for i in $(find -name  "P*.7" -o -name "ScanArchive*.h5" );
+do
+	echo "Pfile $i"  
+	ENUM=`pfile_info $i print | grep -a "Exam no" | cut -c14-22 | tr -d [[:space:]]`
+	SNUM=`pfile_info $i print | grep -a "Series no " | tr -d [[:space:]] | cut -c10-`
+	DESC=`pfile_info $i print | grep -a "Series Desc" | cut -c15- `
+	DESC=${DESC// /_}
+	DESC=${DESC//[^[:alnum:]]/}
+	FOLDER="${ENUM}_${SNUM}_${DESC}"
+	
+	GATING_FILE=`which_gating -f $i | grep "Gating File is" | awk '{print $NF}'`
+	
+	#echo $SNUM
+	#echo $FOLDER
+		
+	mkdir -p $FOLDER
+	mv $i $FOLDER
+		
+	GFULL=$(find -maxdepth 4 -name ${GATING_FILE} -print -quit )
+	COUNT=$(find -maxdepth 4 -name ${GATING_FILE} -print -quit | wc -l )
+	if [ "$COUNT" -eq 0 ]
+	then
+		echo "No gating found"
+	else
+		echo "Found $GFULL"
+		mv $GFULL $FOLDER
+	fi 
+
+	GFULL=$(find -maxdepth 2 -name "${GATING_FILE}.full" -print -quit )
+	COUNT=$(find -maxdepth 4 -name "${GATING_FILE}.full" -print -quit | wc -l )
+	if [ "$COUNT" -eq 0 ]
+	then
+		echo "No gating found"
+	else 
+		echo "Found $GFULL"
+		mv $GFULL $FOLDER
+	fi 
+
+	
+			
+done
+
+count=`ls -1 Gating_T* 2>/dev/null | wc -l`
+if [ $count != 0 ]
+then
+	mkdir GatingFiles 
+	mv Gating_* GatingFiles
+fi
+
+count=`ls -1 kacq* 2>/dev/null | wc -l`
+if [ $count != 0 ]
+then
+	mkdir KacqFiles 
+	mv kacq* KacqFiles
+fi
+
+count=`ls -1 ideal_fl* 2>/dev/null | wc -l`
+if [ $count != 0 ]
+then
+	mkdir IdealFiles 
+	mv ideal_fl* IdealFiles
+fi
